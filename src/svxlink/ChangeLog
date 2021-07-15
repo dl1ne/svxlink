@@ -1,5 +1,8 @@
  1.8.0 -- ?? ??? ????
 ----------------------
+* The new logic UsprLogic can connect SvxLink to analog_bridge,
+  analog_reflector or allstar
+
 * A new Logic "TetraLogic" has been introduced to control a Tetra radio over
   the PEI. For more information take a look into the manual page
 

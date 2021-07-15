@@ -65,6 +65,7 @@ add_executable(svxlink
   MsgHandler.cpp Module.cpp Logic.cpp SimplexLogic.cpp RepeaterLogic.cpp
   EventHandler.cpp LinkManager.cpp CmdParser.cpp QsoRecorder.cpp svxlink.cpp
   DtmfDigitHandler.cpp ReflectorLogic.cpp TetraLogic.cpp DapNetClient.cpp
+  UsrpLogic.cpp
   ${VERSION_DEPENDS}
 )
 target_link_libraries(svxlink ${LIBS})
@@ -101,7 +102,7 @@ install_if_not_exists(${CMAKE_CURRENT_BINARY_DIR}/gpio.conf
 install_if_not_exists(node_info.json ${SVX_SYSCONF_INSTALL_DIR})
 install(FILES events.tcl DESTINATION ${SVX_SHARE_INSTALL_DIR})
 install(FILES RepeaterLogic.tcl SimplexLogic.tcl ReflectorLogic.tcl Module.tcl
-  Logic.tcl CW.tcl SelCall.tcl TetraLogic.tcl locale.tcl
+  Logic.tcl CW.tcl SelCall.tcl TetraLogic.tcl UsrpLogic.tcl locale.tcl
   DESTINATION ${SVX_SHARE_INSTALL_DIR}/events.d
   )
 install(PROGRAMS ${RUNTIME_OUTPUT_DIRECTORY}/svxlink_gpio_up

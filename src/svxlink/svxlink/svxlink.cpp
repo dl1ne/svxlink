@@ -87,6 +87,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #include "ReflectorLogic.h"
 #include "LinkManager.h"
 #include "TetraLogic.h"
+#include "UsrpLogic.h"
 
 
 
@@ -436,13 +437,17 @@ int main(int argc, char **argv)
   cfg.getValue("GLOBAL", "TIMESTAMP_FORMAT", tstamp_format);
 
   cout << PROGRAM_NAME " v" SVXLINK_VERSION
-          " Copyright (C) 2003-2020 Tobias Blomberg / SM0SVX\n\n";
+          " Copyright (C) 2003-2021 Tobias Blomberg / SM0SVX\n\n";
   cout << PROGRAM_NAME " comes with ABSOLUTELY NO WARRANTY. "
           "This is free software, and you are\n";
   cout << "welcome to redistribute it in accordance with the terms "
           "and conditions in the\n";
   cout << "GNU GPL (General Public License) version 2 or later.\n";
 
+  cout << "*********************************************************\n";
+  cout << "* Special version with TETRA-, DAPNET- and USRP-support *\n";
+  cout << "* Extension still in progress, no guarantee             *\n";
+  cout << "*********************************************************\n";
   cout << "\nUsing configuration file: " << main_cfg_filename << endl;
 
   string value;
@@ -759,6 +764,10 @@ static void initialize_logics(Config &cfg)
     else if (logic_type == "Tetra")
     {
       logic = new TetraLogic(cfg, logic_name);
+    }
+    else if (logic_type == "Usrp")
+    {
+      logic = new UsrpLogic(cfg, logic_name);
     }
     else if (logic_type == "Dummy")
     {

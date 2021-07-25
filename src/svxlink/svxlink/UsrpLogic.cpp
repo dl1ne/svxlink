@@ -478,7 +478,7 @@ void UsrpLogic::udpDatagramReceived(const IpAddress& addr, uint16_t port,
              << "]: Unpacking failed for UDP stream to UsrpTlvMetaMsg" << endl;
         return;
       }
-      m_last_call = usrptlvmsg.getCallsign();
+      if (!usrptlvmsg.getCallsign(m_last_call)) return;
       m_last_tg = usrptlvmsg.getTg();
       m_last_dmrid = usrptlvmsg.getDmrId();
     }

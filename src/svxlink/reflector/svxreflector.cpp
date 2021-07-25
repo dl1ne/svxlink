@@ -418,6 +418,8 @@ int main(int argc, const char *argv[])
   cout << "welcome to redistribute it in accordance with the "
           "terms and conditions in the\n";
   cout << "GNU GPL (General Public License) version 2 or later.\n";
+  cout << "This is a special SvxReflector version for Tetra users\n";
+  cout << "modified by Adi / DL1HRC\n";
 
   cout << "\nUsing configuration file: " << main_cfg_filename << endl;
 

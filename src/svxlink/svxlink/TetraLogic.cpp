@@ -82,6 +82,9 @@ using namespace SvxLink;
  *
  ****************************************************************************/
 
+#define TETRALOGICSOFT "SvxLink-Tetra+USRP"
+#define TETRALOGICVERSION "v25072021"
+
 #define OK 0
 #define ERROR 1
 #define CALL_BEGIN 3
@@ -1173,6 +1176,7 @@ void TetraLogic::handleSdsMsg(std::string sds)
       {
         m_aprsinfo << ">" << sds_txt;
       }
+      sdsinfo["content"] = sds_txt;
       break;
 
     case SIMPLE_TEXT_SDS:

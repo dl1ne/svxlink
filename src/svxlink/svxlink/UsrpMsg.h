@@ -414,7 +414,7 @@ class UsrpTlvMetaMsg : public Async::Msg
     }
 
     // returns the callsing of the talker
-    std::string getCallsign(void)
+    bool getCallsign(std::string &callsign)
     {
       uint8_t i = 0;
       uint8_t call[9];
@@ -426,11 +426,12 @@ class UsrpTlvMetaMsg : public Async::Msg
           if (m_meta[i] == 0x00) break;
         }
       }
-      return std::string(call, call+i);
+      callsign = std::string(call, call+i);
+      return (callsign.length() < 3 ? false : true);
     }
 
     // returns MetaData info
-    std::string getMetaInfo(void)
+    bool getMetaInfo(std::string &meta)
     {
       uint8_t metainfo[306];
       uint8_t z;
@@ -441,9 +442,10 @@ class UsrpTlvMetaMsg : public Async::Msg
           metainfo[z] = m_meta[z];
           if (m_meta[z] == 0x00) break;
         }
-        return std::string(metainfo, metainfo+z);
+        meta = std::string(metainfo, metainfo+z);
+        return (meta.length() < 1 ? false : true);
       }
-      return "";
+      return false;
     }
     
     // returns the TYPE of message

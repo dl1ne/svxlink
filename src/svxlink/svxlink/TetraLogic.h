@@ -364,7 +364,9 @@ class TetraLogic : public Logic
     int last_sdsinstance;
     bool inTransmission;
     bool cmgs_received;
-    
+    bool share_userinfo;
+    int current_cci;
+
     void initPei(void);
     void onCharactersReceived(char *buf, int count);
     void sendPei(std::string cmd);
@@ -401,6 +403,7 @@ class TetraLogic : public Logic
     bool rmatch(std::string tok, std::string pattern);
     void sendUserInfo(void);
     void sendWelcomeSds(std::string tsi, short r4s);
+    int handleCci(std::string m_message);
     void onPublishStateEvent(const std::string &event_name, const std::string &msg);
     void publishInfo(std::string type, Json::Value event);
     void onDapnetMessage(std::string, std::string message);

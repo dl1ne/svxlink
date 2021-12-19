@@ -414,7 +414,7 @@ class UsrpTlvMetaMsg : public Async::Msg
     }
 
     // returns the callsing of the talker
-    bool getCallsign(std::string &callsign)
+    std::string getCallsign(void)
     {
       uint8_t i = 0;
       uint8_t call[9];
@@ -426,12 +426,11 @@ class UsrpTlvMetaMsg : public Async::Msg
           if (m_meta[i] == 0x00) break;
         }
       }
-      callsign = std::string(call, call+i);
-      return (callsign.length() < 3 ? false : true);
+      return std::string(call, call+i);
     }
 
     // returns MetaData info
-    bool getMetaInfo(std::string &meta)
+    std::string getMetaInfo(void)
     {
       uint8_t metainfo[306];
       uint8_t z;
@@ -442,10 +441,9 @@ class UsrpTlvMetaMsg : public Async::Msg
           metainfo[z] = m_meta[z];
           if (m_meta[z] == 0x00) break;
         }
-        meta = std::string(metainfo, metainfo+z);
-        return (meta.length() < 1 ? false : true);
+        return std::string(metainfo, metainfo+z);
       }
-      return false;
+      return "";
     }
     
     // returns the TYPE of message
@@ -494,56 +492,6 @@ class UsrpTlvMetaMsg : public Async::Msg
     uint8_t  m_ts;                   // Timeslot length 1 byte
     uint8_t  m_cc;                   // color code length 1 byte
     std::array<uint8_t, 306> m_meta; // padding the rest with 0x00
-};
-
-
-/**
- * @brief   Class for Usrp network Dtmf message
- * @author  Tobias Blomberg / SM0SVX & Adi Bier / DL1HRC
- * @date    2021-07-14
- */
-class UsrpDtmfMsg : public Async::Msg
-{
-  public:
-
-    UsrpDtmfMsg(uint32_t seq=0) : m_seq(htole32(seq))
-    {
-       eye = {'U','S','R','P'};
-       m_memory = 0;
-       m_keyup = 0;
-       m_talkgroup = 0;
-       m_type = htobe32(USRP_TYPE_DTMF);
-       m_mpxid = 0;
-       m_reserved = 0;
-       m_meta.fill(0);
-    }
-
-    // returns the new talkgroup received as command
-    uint32_t getTg(void)
-    {
-      uint8_t metainfo[306];
-      uint8_t z;
-      for (z=0;z<306;z++)
-      {
-        metainfo[z] = m_meta[z];
-        if (m_meta[z] == 0x00) break;
-      }
-      std::string s(metainfo, metainfo+z);
-      return atoi(s.c_str());
-    }
-
-    ASYNC_MSG_MEMBERS(eye, m_seq, m_memory, m_keyup, m_talkgroup, m_type, 
-                      m_mpxid, m_reserved, m_meta)
-  private:
-    std::array<char, 4> eye;         // is always "USRP"
-    uint32_t m_seq;                  // sequence number
-    uint32_t m_memory;               // set to 0 - not used
-    uint32_t m_keyup;                // Tx on/off (1/0)
-    uint32_t m_talkgroup;            // current talkgroup
-    uint32_t m_type;                 // type of frame
-    uint32_t m_mpxid;                // set to 0 - not used
-    uint32_t m_reserved;             // set to 0 - not used
-    std::array<uint8_t, 306> m_meta; // padding the rest with 0x00  
 };
 
 #endif /* USRP_MSG_INCLUDED */

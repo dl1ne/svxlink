@@ -94,14 +94,6 @@ proc setting_mode {mode} {
 
 
 #
-# Executed when a Usrp message USRP_TYPE_DTMF has received
-# 
-proc usrp_tunetg_received {tunetg} {
-  puts "New TG $tunetg tuned";
-}
-
-
-#
 # Executed when json data has received, e.g.:
 # {"call":"SP2ONG","name":"Waldek"}
 #

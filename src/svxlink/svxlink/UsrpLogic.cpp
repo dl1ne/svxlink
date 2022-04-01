@@ -2,11 +2,11 @@
 @file	 UsrpLogic.cpp
 @brief   A logic core that connect to the SvxUsrp
 @author  Tobias Blomberg / SM0SVX & Adi Bier / DL1HRC
-@date	 2021-04-26
+@date	 2022-04-01
 
 \verbatim
 SvxLink - A Multi Purpose Voice Services System for Ham Radio Use
-Copyright (C) 2003-2021 Tobias Blomberg / SM0SVX
+Copyright (C) 2003-2022 Tobias Blomberg / SM0SVX
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -131,14 +131,14 @@ using namespace Async;
  ****************************************************************************/
 
 UsrpLogic::UsrpLogic(Async::Config& cfg, const std::string& name)
-  : LogicBase(cfg, name), m_logic_con_in(0), m_logic_con_out(0), 
+  : LogicBase(cfg, name), m_logic_con_in(0), m_logic_con_out(0),
     m_dec(0), m_flush_timeout_timer(3000, Timer::TYPE_ONESHOT, false),
     m_enc(0), m_tg_select_timeout(DEFAULT_TG_SELECT_TIMEOUT),
-    m_selected_tg(0), udp_seq(0), 
-    stored_samples(0), m_callsign("N0CALL"), ident(false), 
-    m_dmrid(0), m_rptid(0), m_selected_cc(0), m_selected_ts(1), 
+    m_selected_tg(0), udp_seq(0),
+    stored_samples(0), m_callsign("N0CALL"), ident(false),
+    m_dmrid(0), m_rptid(0), m_selected_cc(0), m_selected_ts(1),
     preamp_gain(0), net_preamp_gain(0), m_event_handler(0), m_last_tg(0),
-    debug(LOGERROR), share_userinfo(true), 
+    debug(LOGERROR), share_userinfo(true),
     m_delay_timer(5000, Timer::TYPE_ONESHOT, false)
 {
   m_flush_timeout_timer.expired.connect(
@@ -168,7 +168,7 @@ bool UsrpLogic::initialize(void)
 {
   if (!cfg().getValue(name(), "USRP_HOST", m_usrp_host))
   {
-    cerr << "*** ERROR: " << name() << "/HOST missing in configuration" 
+    cerr << "*** ERROR: " << name() << "/HOST missing in configuration"
          << endl;
     return false;
   }
@@ -184,7 +184,7 @@ bool UsrpLogic::initialize(void)
   m_udp_rxsock = new UdpSocket(m_usrp_rx_port);
   m_udp_rxsock->dataReceived.connect(
        mem_fun(*this, &UsrpLogic::udpDatagramReceived));
-  
+
   if (!cfg().getValue(name(), "CALL", m_callsign))
   {
     cout << "*** ERROR: No " << name() << "/CALL= configured" << endl;
@@ -197,11 +197,11 @@ bool UsrpLogic::initialize(void)
          << " should have 6 digits maximum." << endl;
     return false;
   }
-  
+
   if (!cfg().getValue(name(), "DMRID", m_dmrid))
   {
     m_dmrid = 0;
-    cout << "+++ WARNING: No " << name() << "/DMRID= configured, " 
+    cout << "+++ WARNING: No " << name() << "/DMRID= configured, "
          << "using " << m_dmrid << endl;
   }
 
@@ -215,7 +215,7 @@ bool UsrpLogic::initialize(void)
     m_selected_tg = 0;
   }
 
-  string in;  
+  string in;
   if (!cfg().getValue(name(), "DEFAULT_CC", in))
   {
     m_selected_cc = 0x01;
@@ -224,7 +224,7 @@ bool UsrpLogic::initialize(void)
   {
     m_selected_cc = atoi(in.c_str()) & 0xff;
   }
-  
+
   if (!cfg().getValue(name(), "DEFAULT_TS", in))
   {
     m_selected_ts = 0x01;
@@ -233,7 +233,7 @@ bool UsrpLogic::initialize(void)
   {
     m_selected_ts = atoi(in.c_str()) & 0xff;
   }
-  
+
   string event_handler_str;
   if (!cfg().getValue(name(), "EVENT_HANDLER", event_handler_str))
   {
@@ -288,7 +288,7 @@ bool UsrpLogic::initialize(void)
     prev_src->registerSink(d1, true);
     prev_src = d1;
   }
-  
+
   std::string audio_to_usrp;
   if (cfg().getValue(name(), "FILTER_TO_USRP", audio_to_usrp))
   {
@@ -296,7 +296,7 @@ bool UsrpLogic::initialize(void)
     prev_src->registerSink(usrp_out_filt, true);
     prev_src = usrp_out_filt;
   }
-  
+
   m_enc_endpoint = prev_src;
 
   prev_src = 0;
@@ -322,7 +322,7 @@ bool UsrpLogic::initialize(void)
     prev_src->registerSink(usrp_in_filt, true);
     prev_src = usrp_in_filt;
   }
-  
+
    // If a net_preamp was configured, create it
   cfg().getValue(name(), "NET_PREAMP", net_preamp_gain);
   if (net_preamp_gain != 0)
@@ -332,7 +332,7 @@ bool UsrpLogic::initialize(void)
     prev_src->registerSink(net_preamp, true);
     prev_src = net_preamp;
   }
-  
+
   if (INTERNAL_SAMPLE_RATE == 16000)
   {
      // Interpolate sample rate to 16kHz
@@ -351,7 +351,7 @@ bool UsrpLogic::initialize(void)
   r_buf = new int16_t[USRP_AUDIO_FRAME_LEN*2];
 
   cfg().getValue(name(),"SHARE_USERINFO", share_userinfo);
-  
+
   // reads information from /etc/svxlink/dv_users.json
   std::string user_info_file;
   if (cfg().getValue(name(), "DV_USER_INFOFILE", user_info_file))
@@ -394,7 +394,7 @@ bool UsrpLogic::initialize(void)
       m_user.id = t_userdata.get("id", "").asString();
       if (m_user.id.length() < 1)
       {
-        cout << "*** ERROR: The TSI must have more than 1 digit.\n" 
+        cout << "*** ERROR: The TSI must have more than 1 digit.\n"
           << "\" Check dataset " << i + 1 << " in \"" << user_info_file
           << "\"" << endl;
         return false;
@@ -410,7 +410,7 @@ bool UsrpLogic::initialize(void)
            << endl;
         return false;
       }
-      else 
+      else
       {
         m_user.aprs_sym = t_userdata.get("symbol","").asString()[0];
         m_user.aprs_tab = t_userdata.get("symbol","").asString()[1];
@@ -422,17 +422,17 @@ bool UsrpLogic::initialize(void)
       userdata[m_user.id] = m_user;
       if (debug >= LOGINFO)
       {
-        cout << "id=" << m_user.id << ",call=" << m_user.call << ",name=" 
-             << m_user.name << ",mode=" << m_user.mode << ",location=" 
+        cout << "id=" << m_user.id << ",call=" << m_user.call << ",name="
+             << m_user.name << ",mode=" << m_user.mode << ",location="
              << m_user.location << ",comment=" << m_user.comment << endl;
       }
     }
   }
-  
+
     // receive interlogic messages
   publishStateEvent.connect(
           mem_fun(*this, &UsrpLogic::onPublishStateEvent));
-  
+
   if (!LogicBase::initialize())
   {
     cout << "*** ERROR: Initializing Logic " << name() << endl;
@@ -440,7 +440,7 @@ bool UsrpLogic::initialize(void)
   }
 
   m_delay_timer.setEnable(true);
-  
+
   return true;
 } /* UsrpLogic::initialize */
 
@@ -493,7 +493,7 @@ void UsrpLogic::sendEncodedAudio(const void *buf, int count)
   {
     usrp.setAudioData(r_buf);
     sendAudioMsg(usrp);
-    memmove(r_buf, r_buf + USRP_AUDIO_FRAME_LEN, 
+    memmove(r_buf, r_buf + USRP_AUDIO_FRAME_LEN,
               sizeof(int16_t)*(stored_samples-USRP_AUDIO_FRAME_LEN));
     stored_samples -= USRP_AUDIO_FRAME_LEN;
   }
@@ -510,7 +510,7 @@ void UsrpLogic::flushEncodedAudio(void)
 void UsrpLogic::udpDatagramReceived(const IpAddress& addr, uint16_t port,
                                          void *buf, int count)
 {
-  //cout << "incoming packet from " << addr.toString() << ", len=" << count 
+  //cout << "incoming packet from " << addr.toString() << ", len=" << count
   //     << endl;
   stringstream si;
   si.write(reinterpret_cast<const char*>(buf), count);
@@ -583,7 +583,7 @@ void UsrpLogic::udpDatagramReceived(const IpAddress& addr, uint16_t port,
       size_t found;
       stringstream sp;
       sp.write(reinterpret_cast<const char*>(buf), count);
-      std::string metadata = sp.str().substr(USRP_HEADER_LEN, 
+      std::string metadata = sp.str().substr(USRP_HEADER_LEN,
                                 count-USRP_HEADER_LEN);
 
       uint32_t ti = time(NULL);
@@ -593,7 +593,7 @@ void UsrpLogic::udpDatagramReceived(const IpAddress& addr, uint16_t port,
       Json::Value userinfo(Json::objectValue);
       userinfo["last_activity"] = ti;
       userinfo["gwcallsign"] = m_callsign;
-      
+
       if ((found = metadata.find("INFO:MSG:")) != string::npos)
       {
         string infomessage = metadata.erase(0, metadata.find_last_of(" ") + 1);
@@ -677,7 +677,7 @@ void UsrpLogic::handleStreamStop(void)
   checkIdle();
   m_enc->allEncodedSamplesFlushed();
   timerclear(&m_last_talker_timestamp);
-  
+
   stringstream ss;
   ss << "talker_stop " << m_last_tg << " " << m_last_call;
   processEvent(ss.str());
@@ -687,14 +687,14 @@ void UsrpLogic::handleStreamStop(void)
 void UsrpLogic::sendInfoJson(void)
 {
   stringstream ss;
-  ss << "{\"ab\":{\"version\":\"" 
+  ss << "{\"ab\":{\"version\":\""
   << USRPSOFT << "," << USRPVERSION << "\"},"
   << "\"digital\":{\"gw\":\""
   << m_dmrid << "\",\"rpt\":\""
-  << m_rptid << "\",\"tg\":\"" 
-  << m_selected_tg << "\",\"ts\":\"" 
-  << m_selected_ts << "\",\"cc\":\"" 
-  << m_selected_cc <<  "\",\"call\":\"" 
+  << m_rptid << "\",\"tg\":\""
+  << m_selected_tg << "\",\"ts\":\""
+  << m_selected_ts << "\",\"cc\":\""
+  << m_selected_cc <<  "\",\"call\":\""
   << m_callsign << "\"}}";
 
   cout << ss.str() << endl;
@@ -716,11 +716,11 @@ void UsrpLogic::handleMetaData(std::string metadata)
   bool b = reader.parse(metadata, user_arr);
   if (!b)
   {
-    cout << "*** Error: parsing StateEvent message (" 
+    cout << "*** Error: parsing StateEvent message ("
          << reader.getFormattedErrorMessages() << ")" << endl;
     return;
   }
-  
+
   stringstream ss;
   for (Json::Value::ArrayIndex i = 0; i != user_arr.size(); i++)
   {
@@ -728,7 +728,7 @@ void UsrpLogic::handleMetaData(std::string metadata)
     ss << t_userdata.get("digital","").asString();
   }
   cout << "+++ Metadata received: " << ss.str() << endl;
-  
+
 } /* UsrpLogic::handleMetaData */
 
 
@@ -765,7 +765,7 @@ void UsrpLogic::sendStopMsg(void)
   }
   sendUdpMessage(os);
   ident = false;
-  
+
   stringstream ss;
   ss << "transmission_stop " << m_selected_tg;
   processEvent(ss.str());
@@ -795,7 +795,7 @@ void UsrpLogic::sendMetaMsg(void)
 
   sendUdpMessage(os);
   ident = true;
-  
+
   stringstream ss;
   ss << "transmission_start " << m_selected_tg;
   processEvent(ss.str());
@@ -804,7 +804,7 @@ void UsrpLogic::sendMetaMsg(void)
 
 void UsrpLogic::sendUdpMessage(ostringstream& ss)
 {
-  IpAddress usrp_addr(m_usrp_host); 
+  IpAddress usrp_addr(m_usrp_host);
   m_udp_rxsock->write(usrp_addr, m_usrp_port, ss.str().data(), ss.str().size());
 } /* UsrpLogic::sendUdpMessage */
 
@@ -858,7 +858,7 @@ bool UsrpLogic::setAudioCodec(void)
   if (m_enc == 0)
   {
     cerr << "*** ERROR[" << name()
-         << "]: Failed to initialize audio encoder" 
+         << "]: Failed to initialize audio encoder"
          << endl;
     m_enc = Async::AudioEncoder::create("DUMMY");
     assert(m_enc != 0);
@@ -881,7 +881,7 @@ bool UsrpLogic::setAudioCodec(void)
   if (m_dec == 0)
   {
     cerr << "*** ERROR[" << name()
-         << "]: Failed to initialize audio decoder" 
+         << "]: Failed to initialize audio decoder"
          << endl;
     m_dec = Async::AudioDecoder::create("DUMMY");
     assert(m_dec != 0);
@@ -949,7 +949,7 @@ void UsrpLogic::switchMode(uint8_t mode)
   }
 
   sendUdpMessage(os);
-  
+
   stringstream ss;
   ss << "switch_to_mode " << selected_mode[mode];
   processEvent(ss.str());
@@ -995,7 +995,7 @@ void UsrpLogic::handlePlayDtmf(const std::string& digit, int amp,
 // receive interlogic messages here
 void UsrpLogic::onPublishStateEvent(const string &event_name, const string &msg)
 {
-  //cout << "UsrpLogic::onPublishStateEvent - event_name: " << event_name 
+  //cout << "UsrpLogic::onPublishStateEvent - event_name: " << event_name
   //      << ", message: " << msg << endl;
 
   // if it is not allowed to handle information about users then all userinfo
@@ -1009,7 +1009,7 @@ void UsrpLogic::onPublishStateEvent(const string &event_name, const string &msg)
   {
     if (debug >= LOGERROR)
     {
-      cout << "*** Error: parsing StateEvent message (" 
+      cout << "*** Error: parsing StateEvent message ("
            << reader.getFormattedErrorMessages() << ")" << endl;
     }
     return;
@@ -1038,8 +1038,8 @@ void UsrpLogic::onPublishStateEvent(const string &event_name, const string &msg)
       userdata[m_user.id] = m_user;
       if (debug >= LOGINFO)
       {
-        cout << "id:" << m_user.id << ",call=" << m_user.call << ",name=" 
-             << m_user.name << ",location=" << m_user.location 
+        cout << "id:" << m_user.id << ",call=" << m_user.call << ",name="
+             << m_user.name << ",location=" << m_user.location
              << ", comment=" << m_user.comment << endl;
       }
     }
@@ -1053,7 +1053,7 @@ void UsrpLogic::sendUserInfo(void)
   // read infos of Dv users configured in svxlink.conf
   Json::Value event(Json::arrayValue);
 
-  for (std::map<std::string, User>::iterator iu = userdata.begin(); 
+  for (std::map<std::string, User>::iterator iu = userdata.begin();
        iu!=userdata.end(); iu++)
   {
     Json::Value t_userinfo(Json::objectValue);

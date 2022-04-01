@@ -370,6 +370,8 @@ class TetraLogic : public Logic
     int dmnc;
     int dmcc;
     std::string infosds;
+    bool is_tx;
+    int last_sdsid;
 
     void initPei(void);
     void onCharactersReceived(char *buf, int count);
@@ -403,6 +405,7 @@ class TetraLogic : public Logic
     int queueSds(Sds t_sds);
     void firstContact(Sds tsds);
     bool checkSds(void);
+    void clearOldSds(void);
     void getAiMode(std::string opmode);
     bool rmatch(std::string tok, std::string pattern);
     void sendUserInfo(void);

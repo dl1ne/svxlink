@@ -6,7 +6,7 @@
 
 \verbatim
 SvxLink - A Multi Purpose Voice Services System for Ham Radio Use
-Copyright (C) 2003-2019 Tobias Blomberg / SM0SVX
+Copyright (C) 2003-2022 Tobias Blomberg / SM0SVX
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -49,13 +49,14 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #include <AsyncAudioPassthrough.h>
 #include <AsyncSigCAudioSink.h>
 #include <AsyncPty.h>
-#include <AsyncAudioValve.h>
 #include <AsyncAudioReader.h>
 #include <AsyncAudioSelector.h>
 #include <AsyncAudioClipper.h>
 #include <AsyncAudioCompressor.h>
 #include <AsyncAudioAmp.h>
 #include <AsyncAudioFilter.h>
+#include <AsyncAudioPacer.h>
+#include <AsyncAudioValve.h>
 
 
 /****************************************************************************
@@ -88,7 +89,7 @@ using namespace pj;
  *
  ****************************************************************************/
 #define DEFAULT_SIPLIMITER_THRESH  -1.0
-#define PJSIP_VERSION "21042022"
+#define PJSIP_VERSION "30042022"
 
 
 /****************************************************************************
@@ -280,14 +281,14 @@ namespace sip {
 
 SipLogic::SipLogic(Async::Config& cfg, const std::string& name)
   : LogicBase(cfg, name), m_logic_con_in(0), m_logic_con_out(0),
-    m_outto_sip(0), m_infrom_sip(0), m_autoanswer(false),
-    m_sip_port(5060), dtmf_ctrl_pty(0),
+    m_out_src(0), m_autoanswer(false), m_sip_port(5060), dtmf_ctrl_pty(0),
     m_call_timeout_timer(45000, Timer::TYPE_ONESHOT, false),
     squelch_det(0), accept_incoming_regex(0), reject_incoming_regex(0),
     accept_outgoing_regex(0), reject_outgoing_regex(0),
-    msg_handler(0), event_handler(0), report_events_as_idle(false),
-    startup_finished(false), selector(0), semi_duplex(false),
-    sip_preamp_gain(0), m_autoconnect("")
+    logic_msg_handler(0), logic_event_handler(0), report_events_as_idle(false),
+    startup_finished(false), semi_duplex(false), sip_preamp_gain(0), 
+    m_autoconnect(""), sipselector(0), sip_msg_handler(0),
+    sip_event_handler(0), logicselector(0), sip_valve(0), logic_valve(0)
 {
   m_call_timeout_timer.expired.connect(
       mem_fun(*this, &SipLogic::callTimeout));
@@ -296,25 +297,38 @@ SipLogic::SipLogic(Async::Config& cfg, const std::string& name)
 
 SipLogic::~SipLogic(void)
 {
+  m_call_timeout_timer.setEnable(false);
   delete m_logic_con_in;
   m_logic_con_in = 0;
+  //delete m_logic_con_out;
+  //m_logic_con_out = 0;
   delete m_out_src;
   m_out_src = 0;
-  delete acc;
-  acc = 0;
   delete dtmf_ctrl_pty;
   dtmf_ctrl_pty = 0;
   delete media;
   media = 0;
   delete m_ar;
   m_ar = 0;
-  delete event_handler;
-  event_handler = 0;
-  delete msg_handler;
-  msg_handler = 0;
-  delete selector;
-  selector = 0;
+//  delete sip_valve;
+//  sip_valve = 0;
+//  delete logic_valve;
+//  logic_valve = 0;
+  delete logic_event_handler;
+  logic_event_handler = 0;
+  delete sip_event_handler;
+  sip_event_handler = 0;
+  delete logic_msg_handler;
+  logic_msg_handler = 0;
+  delete sip_msg_handler;
+  sip_msg_handler = 0;
+  delete logicselector;
+  logicselector = 0;
+  delete sipselector;
+  sipselector = 0;
   calls.clear();
+  delete acc;
+  acc = 0;
   if (accept_incoming_regex != 0)
   {
     regfree(accept_incoming_regex);
@@ -384,12 +398,12 @@ bool SipLogic::initialize(void)
   }
 
   cfg().getValue(name(), "SIPPORT", m_sip_port); // SIP udp-port default: 5060
-  
+
   std::string m_sipregistrar;
   cfg().getValue(name(), "SIPREGISTRAR", m_sipregistrar);
   std::string t_sreg = ":";
   t_sreg += to_string(m_sip_port);
-  
+
   if (m_sip_port != 5060 && (m_sipregistrar.find(t_sreg) == std::string::npos))
   {
     cout << "+++ WARNING: The SIPPORT is not the default (5060), so the param "
@@ -580,7 +594,10 @@ bool SipLogic::initialize(void)
    // number of samples = INTERNAL_SAMPLE_RATE * frameTimeLen /1000
   media = new sip::_AudioMedia(*this, 48);
 
-  /*************** incoming from sip ****************************/
+  /*
+   *************** incoming audio from sip ****************************
+   */
+
   // handler for incoming sip audio stream
   m_out_src = new AudioPassthrough;
   AudioSource *prev_src = m_out_src;
@@ -648,13 +665,12 @@ bool SipLogic::initialize(void)
   prev_src->registerSink(splitter, true);
   prev_src = splitter;
 
-  m_infrom_sip = new AudioValve;
-  m_infrom_sip->setOpen(false);
-  prev_src->registerSink(m_infrom_sip, true);
-  prev_src = m_infrom_sip;
+  sip_valve = new AudioValve;
+  sip_valve->setOpen(false);
+  prev_src->registerSink(sip_valve, true);
+  prev_src = sip_valve;
 
   unsigned sql_hangtime;
-
   if (!semi_duplex)
   {
     squelch_det = new SquelchVox;
@@ -679,25 +695,30 @@ bool SipLogic::initialize(void)
     splitter->addSink(squelch_det, true);
     cout << name() << ": Simplexmode, using VOX squelch for Sip." << endl;
   }
-  else {
+  else 
+  {
     cout << name() << ": Semiduplexmode, no Sql used for Sip." << endl;
   }
 
-   // Create the AudioSelector for Sip and message audio streams
-  selector = new Async::AudioSelector;
-  selector->addSource(prev_src);
-  selector->enableAutoSelect(prev_src,0);
-
     // Create the message handler for announcements
-  msg_handler = new MsgHandler(INTERNAL_SAMPLE_RATE);
-  msg_handler->allMsgsWritten.connect(mem_fun(*this, &SipLogic::allMsgsWritten));
+  logic_msg_handler = new MsgHandler(INTERNAL_SAMPLE_RATE);
+  logic_msg_handler->allMsgsWritten.connect(mem_fun(*this, &SipLogic::allLogicMsgsWritten));
 
-  selector->addSource(msg_handler);
-  selector->setFlushWait(msg_handler,false);
+  //AudioPacer *msg_pacer = new AudioPacer(INTERNAL_SAMPLE_RATE,
+   	//                         160*4*(INTERNAL_SAMPLE_RATE / 8000), 500);
+  //logic_msg_handler->registerSink(msg_pacer, true);
 
-  m_logic_con_out = selector;
+   // Create the AudioSelector for Sip and message audio streams
+  logicselector = new Async::AudioSelector;
+  logicselector->addSource(prev_src);
+  logicselector->enableAutoSelect(prev_src, 10);
+  
+  logicselector->addSource(logic_msg_handler);
+  logicselector->enableAutoSelect(logic_msg_handler, 5);
+  logicselector->setFlushWait(logic_msg_handler,false);
+  m_logic_con_out = logicselector;
 
-    // the event handler
+    // the logic event handler
   string event_handler_str;
   if (!cfg().getValue(name(), "EVENT_HANDLER", event_handler_str))
   {
@@ -705,40 +726,74 @@ bool SipLogic::initialize(void)
          << endl;
     return false;
   }
-  event_handler = new EventHandler(event_handler_str, name());
-  event_handler->setVariable("is_core_event_handler", "1");
-  event_handler->setVariable("logic_name", name().c_str());
-  event_handler->setVariable("sip_ctrl_pty", dtmf_ctrl_pty_path);
 
-  event_handler->playFile.connect(mem_fun(*this, &SipLogic::playFile));
-  event_handler->playSilence.connect(mem_fun(*this, &SipLogic::playSilence));
-  event_handler->playTone.connect(mem_fun(*this, &SipLogic::playTone));
-  event_handler->playDtmf.connect(mem_fun(*this, &SipLogic::playDtmf));
-  event_handler->initCall.connect(mem_fun(*this, &SipLogic::initCall));
-  event_handler->processEvent("namespace eval SipLogic {}");
+  logic_event_handler = new EventHandler(event_handler_str, name());
+  logic_event_handler->setVariable("is_core_event_handler", "1");
+  logic_event_handler->setVariable("logic_name", name().c_str());
+  logic_event_handler->setVariable("sip_ctrl_pty", dtmf_ctrl_pty_path);
+  logic_event_handler->setVariable("sip_proxy_server", m_sipserver);
+  logic_event_handler->setVariable("sip_proxy_port", m_sip_port);
 
-  if (!event_handler->initialize())
+  logic_event_handler->playFile.connect(mem_fun(*this, &SipLogic::playLogicFile));
+  logic_event_handler->playSilence.connect(mem_fun(*this, &SipLogic::playLogicSilence));
+  logic_event_handler->playTone.connect(mem_fun(*this, &SipLogic::playLogicTone));
+  logic_event_handler->playDtmf.connect(mem_fun(*this, &SipLogic::playLogicDtmf));
+  logic_event_handler->processEvent("namespace eval " + name() + " {}");
+
+  if (!logic_event_handler->initialize())
   {
-    cout << name() << ":*** ERROR initializing eventhandler in SipLogic."
+    cout << name() << ":*** ERROR initializing Logic eventhandler in SipLogic."
          << endl;
     return false;
   }
+
+  sip_event_handler = new EventHandler(event_handler_str, name());
+  sip_event_handler->setVariable("is_core_event_handler", "1");
+  sip_event_handler->setVariable("logic_name", name().c_str());
+  sip_event_handler->setVariable("sip_ctrl_pty", dtmf_ctrl_pty_path);
+  sip_event_handler->setVariable("sip_proxy_server", m_sipserver);
+  sip_event_handler->setVariable("sip_proxy_port", m_sip_port);
   
-  /*************** outgoing to sip ********************/
+  sip_event_handler->playFile.connect(mem_fun(*this, &SipLogic::playSipFile));
+  sip_event_handler->playSilence.connect(mem_fun(*this, &SipLogic::playSipSilence));
+  sip_event_handler->playTone.connect(mem_fun(*this, &SipLogic::playSipTone));
+  sip_event_handler->playDtmf.connect(mem_fun(*this, &SipLogic::playSipDtmf));
+  sip_event_handler->processEvent("namespace eval " + name() + " {}");
+
+  if (!sip_event_handler->initialize())
+  {
+    cout << name() << ":*** ERROR initializing Sip eventhandler in SipLogic."
+         << endl;
+    return false;
+  }
+
+  /*
+   ************** outgoing audio to sip ********************
+   */
 
    // handler for audio stream from logic to sip
   m_logic_con_in = new Async::AudioPassthrough;
 
-   // the audio valve to control the incoming samples
-  m_outto_sip = new AudioValve;
-  m_outto_sip->setOpen(false);
+    // Create the message handler for announcements
+  sip_msg_handler = new MsgHandler(INTERNAL_SAMPLE_RATE);
+  sip_msg_handler->allMsgsWritten.connect(
+                mem_fun(*this, &SipLogic::allSipMsgsWritten));
+  sipselector = new AudioSelector;
+  sipselector->addSource(m_logic_con_in);
+  sipselector->enableAutoSelect(m_logic_con_in, 5);
+  sipselector->addSource(sip_msg_handler);
+  sipselector->enableAutoSelect(sip_msg_handler, 10);
+  sipselector->setFlushWait(sip_msg_handler, false);
 
-   // the Audio reader to get and handle the samples later
-   // when connected
+  // the Audio reader to get and handle the samples later when connected
   m_ar = new AudioReader;
-  m_ar->registerSource(m_outto_sip);
+  m_ar->registerSource(sipselector);
 
-  m_logic_con_in->registerSink(m_outto_sip, true);
+    // the audio valve to control the incoming samples
+  logic_valve = new AudioValve;
+  logic_valve->setOpen(false);
+  
+  m_logic_con_in->registerSink(logic_valve, true);
 
    // init this Logic
   if (!LogicBase::initialize())
@@ -747,13 +802,13 @@ bool SipLogic::initialize(void)
     return false;
   }
 
-   // auto create an outgoing call
+   // create an outgoing call when AUTOCONNECT is set
   if (m_autoconnect.length() > 0)
   {
     makeCall(acc, m_autoconnect);
   }
 
-  processEvent("startup");
+  processLogicEvent("startup");
 
   cout << ">>> Started SvxLink with special SipLogic extension (v"
        << PJSIP_VERSION << ")" << endl;
@@ -775,6 +830,18 @@ bool SipLogic::initialize(void)
  * Protected member functions
  *
  ****************************************************************************/
+
+ void SipLogic::allLogicMsgsWritten(void)
+{
+  //cout << "SipLogic::allLogicMsgsWritten\n";
+} /* SipLogic::allLogicMsgsWritten */
+
+
+void SipLogic::allSipMsgsWritten(void)
+{
+  //cout << "SipLogic::allSipMsgsWritten\n";
+} /* SipLogic::allSipMsgsWritten */
+
 
 void SipLogic::checkIdle(void)
 {
@@ -799,12 +866,12 @@ void SipLogic::makeCall(sip::_Account *acc, std::string dest_uri)
 	       0, 0, 0) != 0))
   {
     ss << "drop_outgoing_call \"" << dest_uri << "\"";
-    processEvent(ss.str());
+    processLogicEvent(ss.str());
     return;
   }
 
   ss << "calling \"" << dest_uri << "\"";
-  processEvent(ss.str());
+  processLogicEvent(ss.str());
 
   CallOpParam prm(true);
   prm.opt.audioCount = 1;
@@ -833,12 +900,12 @@ void SipLogic::onIncomingCall(sip::_Account *acc, pj::OnIncomingCallParam &iprm)
 
   stringstream ss;
   ss << "ringing \"" << caller << "\"";
-  processEvent(ss.str());
+  processLogicEvent(ss.str());
 
   if (regexec(reject_incoming_regex, caller.c_str(), 0, 0, 0) == 0)
   {
     ss << "reject_incoming_call \"" << caller << "\"";
-    processEvent(ss.str());
+    processSipEvent(ss.str());
     return;
   }
 
@@ -884,8 +951,9 @@ void SipLogic::onMediaState(sip::_Call *call, pj::OnCallMediaStateParam &prm)
         sip_buf = static_cast<pj::AudioMedia *>(call->getMedia(0));
         sip_buf->startTransmit(*media);
         media->startTransmit(*sip_buf);
-        m_outto_sip->setOpen(true);
-        m_infrom_sip->setOpen(semi_duplex);      
+        sip_valve->setOpen(semi_duplex);
+        logic_valve->setOpen(true);
+        processSipEvent("remote_greeting");
       }
     }
   }
@@ -998,7 +1066,7 @@ void SipLogic::onCallState(sip::_Call *call, pj::OnCallStateParam &prm)
   else if (ci.state == PJSIP_INV_STATE_CALLING)     // calling
   {
     ss << "outgoing_call " << caller;
-    cout << name() << ": Calling" << endl;
+    cout << name() << ": Calling" << caller << endl;
   }
   else if (ci.state == PJSIP_INV_STATE_CONFIRMED)
   {
@@ -1035,7 +1103,7 @@ void SipLogic::onCallState(sip::_Call *call, pj::OnCallStateParam &prm)
   {
     cout << "unknown_callstate " << ci.state;
   }
-  processEvent(ss.str());
+  processLogicEvent(ss.str());
 } /* SipLogic::onCallState */
 
 
@@ -1045,8 +1113,8 @@ void SipLogic::onMessageInfo(sip::_Call *call, pj::OnInstantMessageParam &prm)
   SipRxData message = prm.rdata;
   std::string contactUri = prm.contactUri;
   stringstream ss;
-  ss << "text_message_received " << message.wholeMsg;
-  processEvent(ss.str());
+  ss << "text_message_received \"" << message.wholeMsg << "\"";
+  processSipEvent(ss.str());
   // ToDO
 } /* SipLogic::onMessageInfo */
 
@@ -1056,7 +1124,7 @@ void SipLogic::onDtmfDigit(sip::_Call *call, pj::OnDtmfDigitParam &prm)
   pj::CallInfo ci = call->getInfo();
   stringstream ss;
   ss << "dtmf_digit_received " << prm.digit << " " << getCallerNumber(ci.remoteUri);
-  processEvent(ss.str());
+  processSipEvent(ss.str());
 } /* SipLogic::onDtmfDigit */
 
 
@@ -1066,12 +1134,14 @@ void SipLogic::onRegState(sip::_Account *acc, pj::OnRegStateParam &prm)
   stringstream ss;
   ss << "registration_state " << m_sipserver << " "
      << ai.regIsActive << " " << prm.code;
-  processEvent(ss.str());
+  processSipEvent(ss.str());
 } /* SipLogic::onRegState */
 
 
-// hangup all calls
-void SipLogic::hangupCalls(std::vector<sip::_Call *> calls)
+/*
+  hangup all calls
+*/
+void SipLogic::hangupAllCalls(std::vector<sip::_Call *> calls)
 {
   CallOpParam prm(true);
 
@@ -1080,7 +1150,7 @@ void SipLogic::hangupCalls(std::vector<sip::_Call *> calls)
   {
     hangupCall(*it);
   }
-} /* SipLogic::hangupCalls */
+} /* SipLogic::hangupAllCalls */
 
 
 // hangup a single call
@@ -1098,7 +1168,7 @@ void SipLogic::hangupCall(sip::_Call *call)
       break;
     }
   }
-  m_outto_sip->setOpen(false);
+  logic_valve->setOpen(false);
 } /* SipLogic::hangupCall */
 
 
@@ -1119,8 +1189,8 @@ void SipLogic::dtmfCtrlPtyCmdReceived(const void *buf, size_t count)
     {
       if (buffer[1] == '#')
       {
-        hangupCalls(calls);
-        processEvent("call_hangup_by_user");
+        hangupAllCalls(calls);
+        processLogicEvent("call_hangup_by_user");
         return;
       }
 
@@ -1135,7 +1205,7 @@ void SipLogic::dtmfCtrlPtyCmdReceived(const void *buf, size_t count)
           prm.statusCode = (pjsip_status_code)200;
           std::vector<sip::_Call *>::iterator call = calls.begin();
           (*call)->answer(prm);
-          processEvent("incoming_call_answered");
+          processLogicEvent("incoming_call_answered");
         }
         return;
       }
@@ -1197,7 +1267,7 @@ void SipLogic::callTimeout(Async::Timer *t)
 
   stringstream ss;
   ss << "call_timeout";
-  processEvent(ss.str());
+  processLogicEvent(ss.str());
   m_call_timeout_timer.setEnable(false);
   m_call_timeout_timer.reset();
 } /* SipLogic::flushTimeout */
@@ -1211,60 +1281,84 @@ void SipLogic::flushTimeout(Async::Timer *t)
 
 void SipLogic::onSquelchOpen(bool is_open)
 {
+  sip_valve->setOpen(is_open);
   cout << name() << ": The Sip squelch is "
        << (is_open ? "OPEN" : "CLOSED") << endl;
-  m_infrom_sip->setOpen(is_open);
 } /* SipLogic::onSquelchOpen */
 
 
-void SipLogic::allMsgsWritten(void)
-{
-  //cout << "SipLogic::allMsgsWritten\n";
-
-} /* SipLogic::allMsgsWritten */
-
-
-void SipLogic::processEvent(const string& event)
+void SipLogic::processLogicEvent(const string& event)
 {
   if (!startup_finished) return;
-  msg_handler->begin();
-  event_handler->processEvent(name() + "::" + event);
-  msg_handler->end();
-} /* SipLogic::processEvent */
+  logic_msg_handler->begin();
+  logic_event_handler->processEvent(name() + "::" + event);
+  logic_msg_handler->end();
+} /* SipLogic::processLogicEvent */
 
 
-void SipLogic::playFile(const string& path)
+void SipLogic::processSipEvent(const string& event)
 {
-  msg_handler->playFile(path, report_events_as_idle);
-} /* SipLogic::playFile */
+  if (!startup_finished) return;
+  sip_msg_handler->begin();
+  sip_event_handler->processEvent(name() + "::" + event);
+  sip_msg_handler->end();
+} /* SipLogic::processSipEvent */
 
 
-void SipLogic::playSilence(int length)
+void SipLogic::playLogicFile(const string& path)
 {
-  msg_handler->playSilence(length, report_events_as_idle);
-} /* SipLogic::playSilence */
+  logic_msg_handler->playFile(path, report_events_as_idle);
+} /* SipLogic::playLogicFile */
 
 
-void SipLogic::playTone(int fq, int amp, int len)
+void SipLogic::playLogicSilence(int length)
 {
-  msg_handler->playTone(fq, amp, len, report_events_as_idle);
-} /* SipLogic::playTone */
+  logic_msg_handler->playSilence(length, report_events_as_idle);
+} /* SipLogic::playLogicSilence */
 
 
-void SipLogic::playDtmf(const std::string& digits, int amp, int len)
+void SipLogic::playLogicTone(int fq, int amp, int len)
+{
+  logic_msg_handler->playTone(fq, amp, len, report_events_as_idle);
+} /* SipLogic::playLogicTone */
+
+
+void SipLogic::playLogicDtmf(const std::string& digits, int amp, int len)
 {
   for (string::size_type i=0; i < digits.size(); ++i)
   {
-    msg_handler->playDtmf(digits[i], amp, len);
-    msg_handler->playSilence(50, report_events_as_idle);
+    logic_msg_handler->playDtmf(digits[i], amp, len);
+    logic_msg_handler->playSilence(50, report_events_as_idle);
   }
-} /* SipLogic::playDtmf */
+} /* SipLogic::playLogicDtmf */
 
 
-void SipLogic::initCall(const string& remote)
+void SipLogic::playSipFile(const string& path)
 {
-  makeCall(acc, remote);
-} /* SipLogic::initCall */
+  sip_msg_handler->playFile(path, report_events_as_idle);
+} /* SipLogic::playSipFile */
+
+
+void SipLogic::playSipSilence(int length)
+{
+  sip_msg_handler->playSilence(length, report_events_as_idle);
+} /* SipLogic::playSipSilence */
+
+
+void SipLogic::playSipTone(int fq, int amp, int len)
+{
+  sip_msg_handler->playTone(fq, amp, len, report_events_as_idle);
+} /* SipLogic::playSipTone */
+
+
+void SipLogic::playSipDtmf(const std::string& digits, int amp, int len)
+{
+  for (string::size_type i=0; i < digits.size(); ++i)
+  {
+    sip_msg_handler->playDtmf(digits[i], amp, len);
+    sip_msg_handler->playSilence(50, report_events_as_idle);
+  }
+} /* SipLogic::playSipDtmf */
 
 
 void SipLogic::unregisterCall(sip::_Call *call)
@@ -1279,11 +1373,11 @@ void SipLogic::unregisterCall(sip::_Call *call)
     }
   }
 
-  if (calls.empty())
+  if (calls.empty() && squelch_det->isOpen())
   {
-    m_outto_sip->setOpen(false);
-    m_infrom_sip->setOpen(false);
-    squelch_det->reset();
+    sip_valve->setOpen(false);
+    logic_valve->setOpen(false);
+    squelch_det->squelchOpen(false);
   }
 } /* SipLogic::unregisterCall */
 

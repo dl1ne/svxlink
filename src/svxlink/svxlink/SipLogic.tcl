@@ -189,6 +189,7 @@ proc incoming_call {caller} {
 #
 proc dtmf_digit_received {digit caller} {
   puts "Dtmf digit received $digit from $caller";
+  return 0;
 }
 
 
@@ -276,7 +277,8 @@ proc remote_reject_call {} {
 # ToDo: Sends a greeting message to the caller via Sip
 #
 proc remote_greeting {} {
-  playMsg "welcome";
+  playSilence 200;
+  playMsg "SipLogic" "welcome";
   playSilence 200;
 }
 
@@ -308,6 +310,14 @@ proc call_state_confirmed {caller} {
 #
 proc unknown_callstate {caller} {
 }
+
+
+#
+# Executed when a text message has been received
+#
+proc text_message_received {message} {
+}
+
 
 # end of namespace
 }

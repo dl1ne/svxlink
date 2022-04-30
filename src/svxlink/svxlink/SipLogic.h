@@ -6,7 +6,7 @@
 
 \verbatim
 SvxLink - A Multi Purpose Voice Services System for Ham Radio Use
-Copyright (C) 2003-2018 Tobias Blomberg / SM0SVX
+Copyright (C) 2003-2022 Tobias Blomberg / SM0SVX
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -53,7 +53,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #include <AsyncTimer.h>
 #include <AsyncAudioFifo.h>
 #include <AsyncAudioPassthrough.h>
-#include <AsyncAudioValve.h>
 #include <AsyncAudioReader.h>
 
 
@@ -158,20 +157,15 @@ class SipLogic : public LogicBase
     pj_status_t mediaPortGetFrame(pjmedia_port *med_port, pjmedia_frame *put_frame);
     pj_status_t mediaPortPutFrame(pjmedia_port *med_port, pjmedia_frame *put_frame);
 
-    virtual void playFile(const std::string& path);
-    virtual void playSilence(int length);
-    virtual void playTone(int fq, int amp, int len);
-    virtual void playDtmf(const std::string& digits, int amp, int len);    
-    virtual void initCall(const std::string& remote);
-
     void setReportEventsAsIdle(bool idle) { report_events_as_idle = idle; }
 
-    void processEvent(const std::string& event);
-
+    void processLogicEvent(const std::string& event);
+    void processSipEvent(const std::string& event);
 
   protected:
 
-    virtual void allMsgsWritten(void);
+    virtual void allLogicMsgsWritten(void);
+    virtual void allSipMsgsWritten(void);
     void checkIdle(void);
 
   private:
@@ -179,8 +173,6 @@ class SipLogic : public LogicBase
     Async::AudioPassthrough*  m_logic_con_in;
     Async::AudioSource*       m_logic_con_out;
     Async::AudioPassthrough*  m_out_src;
-    Async::AudioValve*        m_outto_sip;
-    Async::AudioValve*        m_infrom_sip;
     Async::AudioReader*       m_ar;
     bool                      m_autoanswer;
     uint16_t                  m_sip_port;
@@ -196,14 +188,19 @@ class SipLogic : public LogicBase
     regex_t                   *reject_incoming_regex;
     regex_t   	         	  *accept_outgoing_regex;
     regex_t                   *reject_outgoing_regex;
-    MsgHandler                *msg_handler;
-    EventHandler              *event_handler;
+    MsgHandler                *logic_msg_handler;
+    EventHandler              *logic_event_handler;
     bool                      report_events_as_idle;
     bool                      startup_finished;
-    Async::AudioSelector      *selector;
     bool                      semi_duplex;
     float                     sip_preamp_gain;
     std::string               m_autoconnect;
+    Async::AudioSelector      *sipselector;
+    MsgHandler                *sip_msg_handler;
+    EventHandler              *sip_event_handler;
+    Async::AudioSelector      *logicselector;
+    Async::AudioValve         *sip_valve;
+    Async::AudioValve         *logic_valve;
 
     SipLogic(const SipLogic&);
     SipLogic& operator=(const SipLogic&);
@@ -214,7 +211,7 @@ class SipLogic : public LogicBase
     void onDtmfDigit(sip::_Call *call, pj::OnDtmfDigitParam &prm);
     void onCallState(sip::_Call *call, pj::OnCallStateParam &prm);
     void onMessageInfo(sip::_Call *call, pj::OnInstantMessageParam &prm);
-    void hangupCalls(std::vector<sip::_Call *> calls);
+    void hangupAllCalls(std::vector<sip::_Call *> calls);
     void hangupCall(sip::_Call *call);
     void dtmfCtrlPtyCmdReceived(const void *buf, size_t count);
     void onMediaState(sip::_Call *call, pj::OnCallMediaStateParam &prm);
@@ -226,6 +223,15 @@ class SipLogic : public LogicBase
     void flushTimeout(Async::Timer *t=0);
     void onSquelchOpen(bool is_open);
     void unregisterCall(sip::_Call *call);
+
+    void playLogicFile(const std::string& path);
+    void playLogicSilence(int length);
+    void playLogicTone(int fq, int amp, int len);
+    void playLogicDtmf(const std::string& digits, int amp, int len);
+    void playSipFile(const std::string& path);
+    void playSipSilence(int length);
+    void playSipTone(int fq, int amp, int len);
+    void playSipDtmf(const std::string& digits, int amp, int len);
 
 };  /* class SipLogic */
 
